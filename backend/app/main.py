@@ -1,20 +1,29 @@
-from fastapi import FastAPI, UploadFile, File, Depends, BackgroundTasks, HTTPException, status
+# app/main.py
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    Depends,
+    BackgroundTasks,
+    HTTPException,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from .support import router as support_router 
 import os
 import uuid
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 
 from .database import engine
 from .models import Base, User
 from . import crud
 from .dependencies import get_db
 from .tasks import run_analysis, run_analysis_sync, celery
+
+# ---- LOCAL JWT AUTH (the good one) ----
 from .auth import (
     authenticate_user,
     create_access_token,
@@ -24,34 +33,51 @@ from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from .schemas_auth import UserCreate, UserResponse, Token, LoginRequest
-from .payments import router as payments_router
-# Create DB tables
-Base.metadata.create_all(bind=engine)
 
+from .support import router as support_router
+from .payments import router as payments_router
+
+
+# -------------------------------------
+# INIT
+# -------------------------------------
+Base.metadata.create_all(bind=engine)
 app = FastAPI(title="DeepVerify API")
 
-# CORS setup
+
+# -------------------------------------
+# CORS
+# -------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # adjust in production
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
 )
 
-# Upload directory
+
+# -------------------------------------
+# FILE SETUP
+# -------------------------------------
 backend_dir = os.path.dirname(os.path.dirname(__file__))
-UPLOAD_DIR = os.path.join(backend_dir, "..", "data", "uploads")
-UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
+
+UPLOAD_DIR = os.path.abspath(os.path.join(backend_dir, "..", "data", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+HEATMAP_DIR = os.path.abspath(os.path.join(backend_dir, "..", "data", "heatmaps"))
+os.makedirs(HEATMAP_DIR, exist_ok=True)
+
 
 @app.get("/")
 def root():
     return {"message": "DeepVerify backend running"}
 
-# -----------------------------
-# AUTHENTICATION
-# -----------------------------
+
+# =================================================================
+# AUTHENTICATION — LOCAL FASTAPI JWT SYSTEM (CORRECT + CLEAN)
+# =================================================================
+
 @app.post("/api/auth/register", response_model=UserResponse)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
     if get_user_by_username(db, user_data.username):
@@ -76,8 +102,10 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username},
+        expires_delta=access_token_expires,
     )
 
     return {
@@ -94,12 +122,14 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/auth/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+def get_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 
-# -----------------------------
-# UPLOAD IMAGE
-# -----------------------------
+
+# =================================================================
+# UPLOAD — MUST BE LOGGED IN
+# =================================================================
+
 @app.post("/api/upload")
 @app.post("/upload")
 async def upload_image(
@@ -126,13 +156,11 @@ async def upload_image(
             user_id=current_user.id,
         )
 
-        # Try to use Celery if available, fallback to sync mode
+        # Prefer Celery if available
         if celery:
             try:
                 run_analysis.delay(job.id, save_path)
-            except Exception as e:
-                # Celery connection failed, fallback to sync mode
-                print(f"Warning: Celery task failed: {e}. Using sync mode.")
+            except Exception:
                 background_tasks.add_task(run_analysis_sync, job.id, save_path)
         else:
             background_tasks.add_task(run_analysis_sync, job.id, save_path)
@@ -142,11 +170,14 @@ async def upload_image(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
-# -----------------------------
+
+# =================================================================
 # JOB TRANSFORM
-# -----------------------------
+# =================================================================
+
 def transform_job_for_frontend(job):
     consensus = None
+
     if job.results:
         labels = [r.label for r in job.results]
         fake_count = labels.count("fake")
@@ -180,21 +211,21 @@ def transform_job_for_frontend(job):
     models = []
     if job.results:
         for result in job.results:
-            if result.label == "fake":
-                score = result.confidence_fake
-            else:
-                score = result.confidence_real
-
-            image_url = None
-            if job.file_path and os.path.exists(job.file_path):
-                filename = os.path.basename(job.file_path)
-                image_url = f"http://localhost:8000/api/uploads/{filename}"
+            score = (
+                result.confidence_fake
+                if result.label == "fake"
+                else result.confidence_real
+            )
 
             heatmap_url = None
-            if result.heatmap_path and result.heatmap_path != "N/A":
-                if os.path.exists(result.heatmap_path):
-                    filename = os.path.basename(result.heatmap_path)
-                    heatmap_url = f"http://localhost:8000/api/heatmaps/{filename}"
+            if result.heatmap_path and os.path.exists(result.heatmap_path):
+                fname = os.path.basename(result.heatmap_path)
+                heatmap_url = f"http://localhost:8000/api/heatmaps/{fname}"
+
+            img_url = None
+            if job.file_path and os.path.exists(job.file_path):
+                fname = os.path.basename(job.file_path)
+                img_url = f"http://localhost:8000/api/uploads/{fname}"
 
             models.append(
                 {
@@ -202,7 +233,7 @@ def transform_job_for_frontend(job):
                     "version": "1.0",
                     "score": score,
                     "heatmap_url": heatmap_url,
-                    "image_url": image_url,
+                    "image_url": img_url,
                     "labels": {
                         "confidence_real": result.confidence_real,
                         "confidence_fake": result.confidence_fake,
@@ -213,13 +244,13 @@ def transform_job_for_frontend(job):
 
     image = None
     if job.file_path and os.path.exists(job.file_path):
-        filename = os.path.basename(job.file_path)
-        image = {"thumbnail_url": f"http://localhost:8000/api/uploads/{filename}"}
+        fname = os.path.basename(job.file_path)
+        image = {"thumbnail_url": f"http://localhost:8000/api/uploads/{fname}"}
 
     return {
         "job_id": job.id,
         "id": job.id,
-        "image_id": job.image_id,
+        "image_id": getattr(job, "image_id", None),
         "file_path": job.file_path,
         "status": job.status,
         "created_at": job.created_at.isoformat(),
@@ -228,9 +259,11 @@ def transform_job_for_frontend(job):
         "image": image,
     }
 
-# -----------------------------
+
+# =================================================================
 # GET JOB
-# -----------------------------
+# =================================================================
+
 @app.get("/api/jobs/{job_id}")
 @app.get("/jobs/{job_id}")
 def get_job(job_id: int, db: Session = Depends(get_db)):
@@ -239,21 +272,21 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
     return transform_job_for_frontend(job)
 
-# -----------------------------
-# DASHBOARD
-# -----------------------------
-@app.get("/api/dashboard")  
+
+# =================================================================
+# DASHBOARD (AUTH REQUIRED)
+# =================================================================
+
+@app.get("/api/dashboard")
 @app.get("/dashboard")
 def dashboard(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     jobs = crud.get_recent_jobs(db, user_id=current_user.id)
     return [transform_job_for_frontend(job) for job in jobs]
 
-# -----------------------------
-# SERVE FILES
-# -----------------------------
-HEATMAP_DIR = os.path.join(backend_dir, "..", "data", "heatmaps")
-HEATMAP_DIR = os.path.abspath(HEATMAP_DIR)
-os.makedirs(HEATMAP_DIR, exist_ok=True)
+
+# =================================================================
+# FILE SERVING
+# =================================================================
 
 @app.get("/api/uploads/{filename}")
 def get_uploaded_file(filename: str):
@@ -262,12 +295,14 @@ def get_uploaded_file(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path)
 
+
 @app.get("/api/heatmaps/{filename}")
 def get_heatmap_file(filename: str):
     file_path = os.path.join(HEATMAP_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Heatmap not found")
     return FileResponse(file_path)
+
 
 app.include_router(support_router)
 app.include_router(payments_router)

@@ -11,3 +11,11 @@ python-dotenv
 python-jose[cryptography]
 passlib[bcrypt]
 email-validator
+python-jose 
+requests
+torch 
+torchvision 
+pillow 
+numpy 
+matplotlib
+tensorflow

@@ -81,7 +81,7 @@ export default function Home() {
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-4">
-                <a href="/api/login">
+                <a href="/login">
                   <Button size="lg">Get Started</Button>
                 </a>
 

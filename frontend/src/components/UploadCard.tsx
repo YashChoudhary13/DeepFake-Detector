@@ -1,4 +1,4 @@
-// replace your existing UploadCard file with this (e.g. pages/components or pages/uploadcard)
+// pages/components/UploadCard.tsx  (replace your existing file)
 import { useState, useEffect, useRef, useCallback } from "react";
 import { uploadImage, getAuthToken } from "@/lib/api";
 import { useRouter } from "next/router";
@@ -8,19 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, Image as ImageIcon, X } from "lucide-react";
 
-/**
- * This component preserves your original logic (file, validate, onUpload, auth checks, errors)
- * but swaps the markup to use the Prompt project's UI primitives (Card, Button, icons).
- *
- * NOTE: purely visual state `isDragging` is used to highlight the drop area — it does not change behavior.
- */
-
 export default function UploadCard() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isDragging, setIsDragging] = useState(false); // visual only
+  const [isDragging, setIsDragging] = useState(false);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -81,26 +74,44 @@ export default function UploadCard() {
       return;
     }
 
-    if (!isAuthenticated) {
-      setError("Please log in to upload images");
-      return;
-    }
+    // NOTE: removed hard client-side block here so anonymous uploads are allowed.
+    // If you want to require login, re-enable this check:
+    // if (!isAuthenticated) { setError("Please log in to upload images"); return; }
 
     setError(null);
     setLoading(true);
     try {
       const res = await uploadImage(file);
-      router.push(`/result/${res.jobId}`);
+      // tolerate several possible shapes from backend: jobId, job_id, id
+      function extractJobIdFromResponse(res: any): number | string | null {
+        if (!res) return null;
+        const candidates = [res.jobId, res.job_id, res.id, res?.job?.id];
+        for (const c of candidates) {
+          if (c !== undefined && c !== null) return c;
+        }
+        console.warn("Upload returned unexpected shape:", res);
+        return null;
+      }
+
+      const jobId = extractJobIdFromResponse(res);
+
+      if (!jobId) {
+        console.error("Unexpected upload response:", res);
+        setError("Upload succeeded but server response was unexpected.");
+        return;
+      }
+      // Navigate to the results dynamic route — correct path: /results/[id]
+      router.push(`/${jobId}`);
     } catch (e: any) {
       const errorMsg = e?.message || "Upload failed";
       setError(errorMsg);
       console.error("Upload error:", e);
 
-      // If authentication error, redirect to login
-      if (errorMsg.includes("log in") || errorMsg.includes("authenticated")) {
+      // If authentication error, redirect to login (backend may return this)
+      if (/auth|login|authenticated/i.test(String(errorMsg))) {
         setTimeout(() => {
           router.push("/login");
-        }, 2000);
+        }, 800);
       }
     } finally {
       setLoading(false);
@@ -115,7 +126,6 @@ export default function UploadCard() {
 
   return (
     <Card className="p-8">
-      {/* Dropzone / empty state */}
       {!file ? (
         <div
           onDrop={onDrop}
@@ -139,11 +149,7 @@ export default function UploadCard() {
               <p className="text-xs text-muted-foreground">Supports JPG, PNG • Max 10MB</p>
             </div>
 
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              size="lg"
-              data-testid="button-browse-files"
-            >
+            <Button onClick={() => fileInputRef.current?.click()} size="lg" data-testid="button-browse-files">
               <ImageIcon className="h-4 w-4 mr-2" />
               Choose file
             </Button>
@@ -159,10 +165,8 @@ export default function UploadCard() {
           </div>
         </div>
       ) : (
-        /* File selected state (uses original logic for details) */
         <div className="space-y-6">
           <div className="relative">
-            {/* No preview is rendered to preserve original logic — show filename/size instead */}
             <div className="w-full max-h-96 object-contain rounded-lg bg-slate-50 p-6 flex items-center justify-center">
               <div className="flex flex-col items-center">
                 <ImageIcon className="h-12 w-12 text-slate-400 mb-3" />
@@ -197,19 +201,13 @@ export default function UploadCard() {
               </p>
             </div>
 
-            <Button
-              onClick={onUpload}
-              disabled={loading || !isAuthenticated || !file}
-              size="lg"
-              data-testid="button-analyze"
-            >
+            <Button onClick={onUpload} disabled={loading || !file} size="lg" data-testid="button-analyze">
               {loading ? "Analyzing…" : "Upload & Analyze"}
             </Button>
           </div>
         </div>
       )}
 
-      {/* Error display (keeps your original error behavior) */}
       {error && (
         <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
           <p className="text-sm text-red-600">{error}</p>
@@ -221,11 +219,12 @@ export default function UploadCard() {
         </div>
       )}
 
-      {/* Not authenticated notice (preserves original flow) */}
+      {/* Show a friendly notice but do NOT block uploads */}
       {!isAuthenticated && (
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-sm text-yellow-800">
-            Please <Link href="/login" className="text-indigo-600 underline">log in</Link> to upload and analyze images.
+            You are not signed in. You can still upload, but some features may require an account.{" "}
+            <Link href="/login" className="text-indigo-600 underline">Log in</Link>
           </p>
         </div>
       )}

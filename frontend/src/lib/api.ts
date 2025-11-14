@@ -4,8 +4,7 @@
 
 // If NEXT_PUBLIC_API_URL is set → use real backend.
 // Otherwise default to http://localhost:8000 for dev.
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /* --------------------------------------------
    AUTHENTICATION HELPERS
@@ -33,6 +32,27 @@ export function getAuthHeaders(): HeadersInit {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
+}
+
+/* --------------------------------------------
+   Helpers: parse JSON safely and extract backend message
+---------------------------------------------*/
+async function parseJsonSafe(resp: Response) {
+  const text = await resp.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text || null;
+  }
+}
+
+function extractErrorMessage(parsedBody: any): string {
+  if (!parsedBody) return "Unknown error";
+  if (typeof parsedBody === "string") return parsedBody;
+  if (parsedBody.detail) return parsedBody.detail;
+  if (parsedBody.error) return parsedBody.error;
+  if (parsedBody.message) return parsedBody.message;
+  return JSON.stringify(parsedBody);
 }
 
 /* --------------------------------------------
@@ -64,6 +84,7 @@ export interface AuthResponse {
   user: User;
 }
 
+/** Login against backend auth. Stores token in localStorage on success. */
 export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   const resp = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
@@ -71,16 +92,20 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
     body: JSON.stringify(credentials),
   });
 
+  const parsed = await parseJsonSafe(resp);
   if (!resp.ok) {
-    const error = await resp.json();
-    throw new Error(error.detail || "Login failed");
+    throw new Error(extractErrorMessage(parsed) || "Login failed");
   }
 
-  const data = await resp.json();
+  const data = parsed as AuthResponse;
+  if (!data?.access_token) {
+    throw new Error("Login succeeded but server returned no access_token");
+  }
   setAuthToken(data.access_token);
   return data;
 }
 
+/** Register a new local user (optional if you keep registration server-side) */
 export async function register(userData: RegisterRequest): Promise<User> {
   const resp = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
@@ -88,24 +113,32 @@ export async function register(userData: RegisterRequest): Promise<User> {
     body: JSON.stringify(userData),
   });
 
+  const parsed = await parseJsonSafe(resp);
   if (!resp.ok) {
-    const error = await resp.json();
-    throw new Error(error.detail || "Registration failed");
+    throw new Error(extractErrorMessage(parsed) || "Registration failed");
   }
 
-  return resp.json();
+  return parsed as User;
 }
 
+/** Return current user object (requires logged-in token) */
 export async function getCurrentUser(): Promise<User> {
   const resp = await fetch(`${API_BASE}/api/auth/me`, {
     headers: getAuthHeaders(),
   });
 
+  const parsed = await parseJsonSafe(resp);
   if (!resp.ok) {
-    throw new Error("Not authenticated");
+    // If unauthorized, remove stale token proactively
+    if (resp.status === 401) {
+      removeAuthToken();
+    }
+    throw new Error(extractErrorMessage(parsed) || "Not authenticated");
   }
 
-  return resp.json();
+  // backend returns { user: {...} } in some setups; accept both shapes
+  if (parsed && parsed.user) return parsed.user as User;
+  return parsed as User;
 }
 
 export function logout(): void {
@@ -114,21 +147,22 @@ export function logout(): void {
 
 /* --------------------------------------------
    Upload Image → POST /upload
+   Requires a valid backend token.
    Returns: { jobId: number }
 ---------------------------------------------*/
 
 export async function uploadImage(file: File): Promise<{ jobId: number }> {
-  const form = new FormData();
-  form.append("file", file);
-
   const token = getAuthToken();
   if (!token) {
     throw new Error("Please log in to upload images");
   }
 
-  // Add timeout to prevent hanging
+  const form = new FormData();
+  form.append("file", file);
+
+  // Do NOT set Content-Type when using FormData — browser sets proper boundary.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s
 
   try {
     const resp = await fetch(`${API_BASE}/upload`, {
@@ -140,32 +174,23 @@ export async function uploadImage(file: File): Promise<{ jobId: number }> {
 
     clearTimeout(timeoutId);
 
+    const parsed = await parseJsonSafe(resp);
     if (!resp.ok) {
-      let errorMessage = "Upload failed";
-      try {
-        const errorData = await resp.json();
-        errorMessage = errorData.detail || errorMessage;
-      } catch {
-        const errorText = await resp.text();
-        errorMessage = errorText || errorMessage;
-      }
-      
       if (resp.status === 401) {
-        errorMessage = "Please log in to upload images";
-      } else if (resp.status === 500) {
-        errorMessage = `Server error: ${errorMessage}`;
+        // clear stale token and provide actionable message
+        removeAuthToken();
+        throw new Error(extractErrorMessage(parsed) || "Please log in to upload images");
       }
-      
-      throw new Error(errorMessage);
+      throw new Error(extractErrorMessage(parsed) || "Upload failed");
     }
 
-    return resp.json(); // { jobId }
-  } catch (error: any) {
+    return parsed as { jobId: number };
+  } catch (err: any) {
     clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
+    if (err?.name === "AbortError") {
       throw new Error("Upload timeout - please try again");
     }
-    throw error;
+    throw err;
   }
 }
 
@@ -178,11 +203,15 @@ export async function getJob(jobId: number) {
     headers: getAuthHeaders(),
   });
 
+  const parsed = await parseJsonSafe(resp);
   if (!resp.ok) {
-    throw new Error("Job not found");
+    if (resp.status === 401) {
+      removeAuthToken();
+    }
+    throw new Error(extractErrorMessage(parsed) || "Job not found");
   }
 
-  return resp.json();
+  return parsed;
 }
 
 /* --------------------------------------------
@@ -194,22 +223,24 @@ export async function getDashboard() {
     headers: getAuthHeaders(),
   });
 
+  const parsed = await parseJsonSafe(resp);
   if (!resp.ok) {
-    throw new Error("Failed to load dashboard");
+    if (resp.status === 401) removeAuthToken();
+    throw new Error(extractErrorMessage(parsed) || "Failed to load dashboard");
   }
 
-  return resp.json();
+  return parsed;
 }
 
 /* --------------------------------------------
    SWR Fetcher (auto-prepends API_BASE)
 ---------------------------------------------*/
 
-export const fetcher = (path: string) => {
-  return fetch(`${API_BASE}${path}`, {
+export const fetcher = (path: string) =>
+  fetch(`${API_BASE}${path}`, {
     headers: getAuthHeaders(),
-  }).then((res) => {
-    if (!res.ok) throw new Error("API Error");
-    return res.json();
+  }).then(async (res) => {
+    const parsed = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(extractErrorMessage(parsed) || "API Error");
+    return parsed;
   });
-};

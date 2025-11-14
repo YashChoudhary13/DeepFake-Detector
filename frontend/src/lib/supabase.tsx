@@ -1,4 +1,4 @@
-/* supabase */"use client";
+/* supabase "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -30,3 +30,4 @@ export function SupabaseProvider({ children }: Props) {
 }
 
 export const useSupabase = () => useContext(SupabaseContext);
+*/
