@@ -17,6 +17,11 @@
       "static/chunks/main.js",
       "static/chunks/pages/[id].js"
     ],
+    "/[id]": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/[id].js"
+    ],
     "/_app": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
@@ -27,6 +32,7 @@
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
+<<<<<<< HEAD
     "/dashboard": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
@@ -36,6 +42,17 @@
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/indexloggedin.js"
+=======
+    "/login": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/login.js"
+    ],
+    "/register": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/register.js"
+>>>>>>> 5bbdea3ec212ca32f2ae678dfefed1ceb245af7e
     ]
   },
   "ampFirstPages": []

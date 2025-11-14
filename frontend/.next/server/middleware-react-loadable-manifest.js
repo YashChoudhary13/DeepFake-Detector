@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 self.__REACT_LOADABLE_MANIFEST="{\"[id].tsx -> @/components/Navbar\":{\"id\":\"[id].tsx -> @/components/Navbar\",\"files\":[\"static/chunks/src_components_Navbar_tsx-_25530.js\"]},\"dashboard.tsx -> @/components/Navbar\":{\"id\":\"dashboard.tsx -> @/components/Navbar\",\"files\":[\"static/chunks/src_components_Navbar_tsx-_25531.js\"]},\"indexloggedin.tsx -> @/components/Navbar\":{\"id\":\"indexloggedin.tsx -> @/components/Navbar\",\"files\":[\"static/chunks/src_components_Navbar_tsx-_25532.js\"]}}"
+=======
+self.__REACT_LOADABLE_MANIFEST="{\"[id].tsx -> @/components/Navbar\":{\"id\":\"[id].tsx -> @/components/Navbar\",\"files\":[\"static/chunks/src_components_Navbar_tsx-_25530.js\"]},\"index.tsx -> @/components/Navbar\":{\"id\":\"index.tsx -> @/components/Navbar\",\"files\":[\"static/chunks/src_components_Navbar_tsx-_25531.js\"]}}"
+>>>>>>> 5bbdea3ec212ca32f2ae678dfefed1ceb245af7e
