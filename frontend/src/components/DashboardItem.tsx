@@ -10,8 +10,8 @@ import React from "react";
 interface DashboardItemProps {
   item: {
     job_id: string;
-    thumbnail_url?: string;
-    created_at: string;
+    // thumbnail removed intentionally
+    created_at?: string | number | null;
     consensus?: {
       decision: string;
       score: number;
@@ -24,9 +24,34 @@ export default function DashboardItem({ item }: DashboardItemProps) {
   const decision = item.consensus?.decision || "PENDING";
   const score = Math.round((item.consensus?.score || 0) * 100);
 
-  // Formatting timestamp similar to Prompt UI
-  const timeText = item.created_at
-    ? formatDistanceToNow(new Date(item.created_at), { addSuffix: true })
+  // Robust timestamp parsing:
+  // - Accepts numeric (seconds or ms) and ISO strings
+  // - If ISO parse fails, attempts to append 'Z' (treat as UTC)
+  const parseTimestamp = (ts?: string | number | null): Date | null => {
+    if (!ts) return null;
+
+    // numeric string or number
+    if (typeof ts === "number" || /^\d+$/.test(String(ts))) {
+      const n = Number(ts);
+      // heuristics: >1e12 -> milliseconds, else seconds
+      return new Date(n > 1e12 ? n : n * 1000);
+    }
+
+    // try Date parsing for ISO-like strings
+    let d = new Date(String(ts));
+    if (!isNaN(d.getTime())) return d;
+
+    // append Z (UTC) in case string missed timezone
+    d = new Date(String(ts) + "Z");
+    if (!isNaN(d.getTime())) return d;
+
+    return null;
+  };
+
+  const parsedDate = parseTimestamp(item.created_at ?? null);
+
+  const timeText = parsedDate
+    ? formatDistanceToNow(parsedDate, { addSuffix: true })
     : "Recently";
 
   const getConsensusBadge = () => {
@@ -49,15 +74,7 @@ export default function DashboardItem({ item }: DashboardItemProps) {
   return (
     <Card className="p-6 hover-elevate transition-shadow" data-testid={`card-job-${item.job_id}`}>
       <div className="flex items-center gap-6">
-        {/* Thumbnail */}
-        <div className="w-20 h-20 rounded-md overflow-hidden bg-muted flex-shrink-0">
-          <img
-            src={item.thumbnail_url || "/sample-thumbnails/placeholder.png"}
-            alt={item.job_id}
-            className="w-full h-full object-cover"
-            data-testid="img-thumbnail"
-          />
-        </div>
+        {/* Thumbnail removed intentionally */}
 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between gap-4">
@@ -86,7 +103,7 @@ export default function DashboardItem({ item }: DashboardItemProps) {
             </span>
 
             <Button variant="ghost" size="sm" asChild data-testid="button-view-report">
-              <Link href={`/result/${item.job_id}`} legacyBehavior>
+              <Link href={`/${item.job_id}`} legacyBehavior>
                 <a className="flex items-center">
                   View Report
                   <ArrowRight className="h-4 w-4 ml-2" />

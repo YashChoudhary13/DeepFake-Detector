@@ -41,7 +41,6 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 
 /***/ }),
 
-<<<<<<< HEAD
 /***/ "./node_modules/lucide-react/dist/esm/icons/arrow-right.js":
 /*!*****************************************************************!*\
   !*** ./node_modules/lucide-react/dist/esm/icons/arrow-right.js ***!
@@ -52,8 +51,6 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 
 /***/ }),
 
-=======
->>>>>>> 5bbdea3ec212ca32f2ae678dfefed1ceb245af7e
 /***/ "./node_modules/lucide-react/dist/esm/icons/circle-check.js":
 /*!******************************************************************!*\
   !*** ./node_modules/lucide-react/dist/esm/icons/circle-check.js ***!
@@ -84,7 +81,6 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 
 /***/ }),
 
-<<<<<<< HEAD
 /***/ "./node_modules/lucide-react/dist/esm/icons/clock.js":
 /*!***********************************************************!*\
   !*** ./node_modules/lucide-react/dist/esm/icons/clock.js ***!
@@ -95,8 +91,6 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 
 /***/ }),
 
-=======
->>>>>>> 5bbdea3ec212ca32f2ae678dfefed1ceb245af7e
 /***/ "./node_modules/lucide-react/dist/esm/icons/download.js":
 /*!**************************************************************!*\
   !*** ./node_modules/lucide-react/dist/esm/icons/download.js ***!
